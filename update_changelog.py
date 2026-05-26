@@ -151,15 +151,16 @@ def search_jira() -> list[dict]:
     )
     url = f"{JIRA_BASE_URL}/rest/api/3/issue/search"
     log.info("  Jira request URL: %s", url)
-    params = {
+    payload = {
         "jql": jql,
         "maxResults": 30,
-        "fields": "summary,description,status,labels,assignee,updated,comment",
+        "fields": ["summary", "description", "status", "labels", "assignee", "updated", "comment"],
     }
-    resp = requests.get(
+    resp = requests.post(
         url,
-        params=params,
+        json=payload,
         auth=(JIRA_EMAIL, JIRA_API_TOKEN),
+        headers={"Content-Type": "application/json"},
         timeout=30,
     )
     resp.raise_for_status()
