@@ -150,6 +150,7 @@ def search_jira() -> list[dict]:
         'ORDER BY updated DESC'
     )
     url = f"{JIRA_BASE_URL}/rest/api/3/issue/search"
+    log.info("  Jira request URL: %s", url)
     params = {
         "jql": jql,
         "maxResults": 30,
