@@ -459,12 +459,12 @@ def build_table_rows(entries: list[dict]) -> str:
     rows = []
     for e in entries:
         row = f"""<tr>
-  <td><time datetime="{e['date_iso']}">{e['date_human']}</time></td>
-  <td><span data-type="status" data-color="{e['category_color']}">{e['category']}</span></td>
-  <td><strong>{e['title']}</strong></td>
-  <td>{e['summary']}</td>
-  <td><a href="{e['source_url']}">{e['source_label']}</a></td>
-  <td>{e['added_by']}</td>
+  <td><p><time datetime="{e['date_iso']}">{e['date_human']}</time></p></td>
+  <td><p><span data-type="status" data-color="{e['category_color']}">{e['category']}</span></p></td>
+  <td><p><strong>{e['title']}</strong></p></td>
+  <td><p>{e['summary']}</p></td>
+  <td><p><a href="{e['source_url']}">{e['source_label']}</a></p></td>
+  <td><p>{e['added_by']}</p></td>
 </tr>"""
         rows.append(row)
     return "\n".join(rows)
