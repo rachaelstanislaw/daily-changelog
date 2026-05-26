@@ -149,18 +149,17 @@ def search_jira() -> list[dict]:
         'AND labels != "wiz-cve" '
         'ORDER BY updated DESC'
     )
-    url = f"{JIRA_BASE_URL}/rest/api/3/issue/search"
+    url = f"{JIRA_BASE_URL}/rest/api/3/search"
     log.info("  Jira request URL: %s", url)
-    payload = {
+    params = {
         "jql": jql,
         "maxResults": 30,
-        "fields": ["summary", "description", "status", "labels", "assignee", "updated", "comment"],
+        "fields": "summary,description,status,labels,assignee,updated,comment",
     }
-    resp = requests.post(
+    resp = requests.get(
         url,
-        json=payload,
+        params=params,
         auth=(JIRA_EMAIL, JIRA_API_TOKEN),
-        headers={"Content-Type": "application/json"},
         timeout=30,
     )
     if not resp.ok:
