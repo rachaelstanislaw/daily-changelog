@@ -213,9 +213,9 @@ def _extract_adf_text(node: dict | list | str, depth: int = 0) -> str:
 def search_linear() -> list[dict]:
     """Return recently completed SUPENG issues."""
     log.info("Searching Linear SUPENG (last %d hours)...", LOOKBACK_HOURS)
-    since = since_iso()
+    duration = f"-{LOOKBACK_HOURS}h"
     query = """
-    query RecentCompleted($since: DateTime!) {
+    query RecentCompleted($since: DateTimeOrDuration!) {
       issues(
         filter: {
           team: { key: { eq: "SUPENG" } }
@@ -238,7 +238,7 @@ def search_linear() -> list[dict]:
     """
     resp = requests.post(
         "https://api.linear.app/graphql",
-        json={"query": query, "variables": {"since": since}},
+        json={"query": query, "variables": {"since": duration}},
         headers={"Authorization": LINEAR_API_KEY, "Content-Type": "application/json"},
         timeout=30,
     )
