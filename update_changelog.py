@@ -242,6 +242,8 @@ def search_linear() -> list[dict]:
         headers={"Authorization": LINEAR_API_KEY, "Content-Type": "application/json"},
         timeout=30,
     )
+    if not resp.ok:
+        log.error("  Linear error %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
     nodes = resp.json().get("data", {}).get("issues", {}).get("nodes", [])
     log.info("  Found %d Linear issues", len(nodes))
