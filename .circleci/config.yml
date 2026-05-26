@@ -31,17 +31,8 @@ jobs:
           # Expose all required secrets from CircleCI project env vars.
           # Never hard-code values here — set them in Project Settings → Env Vars.
           environment:
-            CONFLUENCE_BASE_URL:   $CONFLUENCE_BASE_URL
-            CONFLUENCE_EMAIL:      $CONFLUENCE_EMAIL
-            CONFLUENCE_API_TOKEN:  $CONFLUENCE_API_TOKEN
-            JIRA_BASE_URL:         $JIRA_BASE_URL
-            JIRA_EMAIL:            $JIRA_EMAIL
-            JIRA_API_TOKEN:        $JIRA_API_TOKEN
-            LINEAR_API_KEY:        $LINEAR_API_KEY
-            SLACK_BOT_TOKEN:       $SLACK_BOT_TOKEN
-            ANTHROPIC_API_KEY:     $ANTHROPIC_API_KEY
             # Optional: override how far back to search (default: 26h, gives buffer overlap)
-            LOOKBACK_HOURS:        "26"
+            LOOKBACK_HOURS: "26"
 
       - store_artifacts:
           path: /tmp/changelog-bot.log
