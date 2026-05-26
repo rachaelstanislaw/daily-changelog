@@ -59,6 +59,11 @@ SLACK_CHANNELS = [
     {"name": "custeng-general"},   # ID resolved at runtime if needed
 ]
 
+# Private channels to poll directly via conversations.history (bot must be invited)
+SLACK_PRIVATE_CHANNELS = [
+    {"name": "motivators", "id": "G17SY9W5Q"},
+]
+
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 CLAUDE_MODEL = "claude-sonnet-4-5"
 
@@ -318,6 +323,58 @@ def search_slack() -> list[dict]:
     return results
 
 
+def poll_private_slack_channels() -> list[dict]:
+    """Poll private channels directly via conversations.history (requires bot invite)."""
+    if not SLACK_PRIVATE_CHANNELS:
+        return []
+
+    log.info("Polling %d private Slack channel(s)...", len(SLACK_PRIVATE_CHANNELS))
+    # Convert lookback hours to a Unix timestamp for the oldest= param
+    oldest_ts = str(
+        (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)).timestamp()
+    )
+
+    results = []
+    for channel in SLACK_PRIVATE_CHANNELS:
+        try:
+            resp = requests.get(
+                "https://slack.com/api/conversations.history",
+                params={
+                    "channel": channel["id"],
+                    "oldest": oldest_ts,
+                    "limit": 50,
+                },
+                headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if not data.get("ok"):
+                log.warning(
+                    "  Private channel poll error for #%s: %s",
+                    channel["name"],
+                    data.get("error"),
+                )
+                continue
+            messages = data.get("messages", [])
+            log.info("  Found %d messages in #%s", len(messages), channel["name"])
+            for m in messages:
+                if m.get("subtype"):  # skip join/leave/bot messages
+                    continue
+                results.append({
+                    "source": "slack_private",
+                    "channel": channel["name"],
+                    "user": m.get("user", "unknown"),
+                    "text": m.get("text", "")[:800],
+                    "ts": m.get("ts"),
+                    "permalink": f"https://circleci.slack.com/archives/{channel['id']}/p{m.get('ts', '').replace('.', '')}",
+                })
+        except Exception as e:
+            log.warning("  Failed to poll #%s: %s", channel["name"], e)
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Claude: synthesize entries
 # ---------------------------------------------------------------------------
@@ -368,8 +425,11 @@ Research window: last {LOOKBACK_HOURS} hours
 === LINEAR ISSUES ===
 {json.dumps(raw_data['linear'], indent=2)}
 
-=== SLACK MESSAGES ===
+=== SLACK MESSAGES (public channels) ===
 {json.dumps(raw_data['slack'], indent=2)}
+
+=== SLACK MESSAGES (private: #motivators) ===
+{json.dumps(raw_data['slack_private'], indent=2)}
 
 Review all of the above and return a JSON array of changelog entries following the rules in your system prompt.
 """
@@ -493,22 +553,25 @@ def main():
     jira_issues = search_jira()
     linear_issues = search_linear()
     slack_messages = search_slack()
+    slack_private = poll_private_slack_channels()
 
     raw_data = {
         "confluence": confluence_pages,
         "jira": jira_issues,
         "linear": linear_issues,
         "slack": slack_messages,
+        "slack_private": slack_private,
     }
 
     total_signals = sum(len(v) for v in raw_data.values())
     log.info(
-        "Research complete: %d total signals (%d Confluence, %d Jira, %d Linear, %d Slack)",
+        "Research complete: %d total signals (%d Confluence, %d Jira, %d Linear, %d Slack public, %d Slack private)",
         total_signals,
         len(confluence_pages),
         len(jira_issues),
         len(linear_issues),
         len(slack_messages),
+        len(slack_private),
     )
 
     # 2. Synthesize
