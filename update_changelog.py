@@ -72,22 +72,22 @@ LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "26"))
 
 def since_date() -> str:
     """Return ISO date string for LOOKBACK_HOURS ago."""
-    dt = datetime.datetime.utcnow() - datetime.timedelta(hours=LOOKBACK_HOURS)
-    return dt.strftime("%Y-%m-%d")
+    d = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)
+    return d.strftime("%Y-%m-%d")
 
 
 def since_iso() -> str:
     """Return full ISO timestamp for LOOKBACK_HOURS ago."""
-    dt = datetime.datetime.utcnow() - datetime.timedelta(hours=LOOKBACK_HOURS)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    d = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)
+    return d.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def today_iso() -> str:
-    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
 
 def today_human() -> str:
-    return datetime.datetime.utcnow().strftime("%B %-d, %Y")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%B %-d, %Y")
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,6 @@ def search_jira() -> list[dict]:
         'ORDER BY updated DESC'
     )
     url = f"{JIRA_BASE_URL}/rest/api/3/search/jql"
-    log.info("  Jira request URL: %s", url)
     params = {
         "jql": jql,
         "maxResults": 30,
@@ -162,8 +161,6 @@ def search_jira() -> list[dict]:
         auth=(JIRA_EMAIL, JIRA_API_TOKEN),
         timeout=30,
     )
-    if not resp.ok:
-        log.error("  Jira error %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
     issues = resp.json().get("issues", [])
     log.info("  Found %d Jira issues", len(issues))
@@ -242,8 +239,6 @@ def search_linear() -> list[dict]:
         headers={"Authorization": LINEAR_API_KEY, "Content-Type": "application/json"},
         timeout=30,
     )
-    if not resp.ok:
-        log.error("  Linear error %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
     nodes = resp.json().get("data", {}).get("issues", {}).get("nodes", [])
     log.info("  Found %d Linear issues", len(nodes))
