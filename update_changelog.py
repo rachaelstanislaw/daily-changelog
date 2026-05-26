@@ -163,6 +163,8 @@ def search_jira() -> list[dict]:
         headers={"Content-Type": "application/json"},
         timeout=30,
     )
+    if not resp.ok:
+        log.error("  Jira error %d: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
     issues = resp.json().get("issues", [])
     log.info("  Found %d Jira issues", len(issues))
