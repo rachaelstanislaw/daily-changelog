@@ -60,7 +60,7 @@ SLACK_CHANNELS = [
 ]
 
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = "claude-sonnet-4-5"
 
 # How far back to look (hours). Default 26h to give a small overlap buffer.
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "26"))
@@ -385,7 +385,6 @@ Review all of the above and return a JSON array of changelog entries following t
     # Strip any accidental markdown fences
     text = re.sub(r"^```[a-z]*\n?", "", text)
     text = re.sub(r"\n?```$", "", text)
-
     entries = json.loads(text)
     log.info("  Claude returned %d entries", len(entries))
     return entries
