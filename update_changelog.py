@@ -149,7 +149,7 @@ def search_jira() -> list[dict]:
         'AND labels != "wiz-cve" '
         'ORDER BY updated DESC'
     )
-    url = f"{JIRA_BASE_URL}/rest/api/3/search"
+    url = f"{JIRA_BASE_URL}/rest/api/3/issue/search"
     params = {
         "jql": jql,
         "maxResults": 30,
