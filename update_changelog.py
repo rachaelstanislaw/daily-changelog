@@ -12,7 +12,8 @@ Required environment variables:
   CONFLUENCE_EMAIL        — Atlassian account email
   CONFLUENCE_API_TOKEN    — Atlassian API token
   LINEAR_API_KEY          — Linear personal API key
-  SLACK_BOT_TOKEN         — Slack bot token with search:read scope
+  SLACK_BOT_TOKEN         — Slack bot token (for private channel history; needs groups:history scope)
+  SLACK_USER_TOKEN        — Slack user token (xoxp-) with search:read scope for public channel search
 """
 
 import os
@@ -34,7 +35,10 @@ import anthropic
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("/tmp/changelog-bot.log"),
+    ],
 )
 log = logging.getLogger(__name__)
 
@@ -46,7 +50,8 @@ CONFLUENCE_SPACE = "CE"
 
 LINEAR_API_KEY = os.environ["LINEAR_API_KEY"]
 
-SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
+SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]    # xoxb- for private channel history
+SLACK_USER_TOKEN = os.environ["SLACK_USER_TOKEN"]  # xoxp- for search.messages
 SLACK_CHANNELS = [
     {"name": "custeng-support", "id": "C03CF3S7P"},
     {"name": "custeng-general"},
@@ -214,7 +219,7 @@ def search_slack() -> list[dict]:
             resp = requests.get(
                 "https://slack.com/api/search.messages",
                 params={"query": query, "count": 10},
-                headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                headers={"Authorization": f"Bearer {SLACK_USER_TOKEN}"},
                 timeout=30,
             )
             resp.raise_for_status()
