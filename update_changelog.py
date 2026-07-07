@@ -2,7 +2,7 @@
 """
 Support Engineering Process Changelog — Daily Auto-Update Bot
 
-Searches Confluence, Jira, Linear, and Slack for the last 24 hours of
+Searches Confluence, Linear, and Slack for the last 24 hours of
 process-relevant changes, then uses Claude to synthesize changelog entries
 and pushes them to the Confluence page.
 
@@ -11,9 +11,6 @@ Required environment variables:
   CONFLUENCE_BASE_URL     — e.g. https://circleci.atlassian.net
   CONFLUENCE_EMAIL        — Atlassian account email
   CONFLUENCE_API_TOKEN    — Atlassian API token
-  JIRA_BASE_URL           — e.g. https://circleci.atlassian.net (often same as Confluence)
-  JIRA_EMAIL              — Atlassian account email (often same as Confluence)
-  JIRA_API_TOKEN          — Atlassian API token (often same as Confluence)
   LINEAR_API_KEY          — Linear personal API key
   SLACK_BOT_TOKEN         — Slack bot token with search:read scope
 """
@@ -47,16 +44,12 @@ CONFLUENCE_API_TOKEN = os.environ["CONFLUENCE_API_TOKEN"]
 CONFLUENCE_PAGE_ID = "8709898256"
 CONFLUENCE_SPACE = "CE"
 
-JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", CONFLUENCE_BASE_URL).rstrip("/")
-JIRA_EMAIL = os.environ.get("JIRA_EMAIL", CONFLUENCE_EMAIL)
-JIRA_API_TOKEN = os.environ.get("JIRA_API_TOKEN", CONFLUENCE_API_TOKEN)
-
 LINEAR_API_KEY = os.environ["LINEAR_API_KEY"]
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 SLACK_CHANNELS = [
     {"name": "custeng-support", "id": "C03CF3S7P"},
-    {"name": "custeng-general"},   # ID resolved at runtime if needed
+    {"name": "custeng-general"},
 ]
 
 # Private channels to poll directly via conversations.history (bot must be invited)
@@ -65,7 +58,7 @@ SLACK_PRIVATE_CHANNELS = [
 ]
 
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-CLAUDE_MODEL = "claude-sonnet-4-5"
+CLAUDE_MODEL = "claude-sonnet-4-6"
 
 # How far back to look (hours). Default 26h to give a small overlap buffer.
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "26"))
@@ -126,7 +119,6 @@ def search_confluence() -> list[dict]:
     pages = []
     for r in results:
         body_text = r.get("body", {}).get("storage", {}).get("value", "")
-        # Strip HTML tags for a plain-text excerpt
         plain = re.sub(r"<[^>]+>", " ", body_text)
         plain = re.sub(r"\s+", " ", plain).strip()[:2000]
         pages.append({
@@ -137,75 +129,6 @@ def search_confluence() -> list[dict]:
             "excerpt": plain,
         })
     return pages
-
-
-# ---------------------------------------------------------------------------
-# Source: Jira
-# ---------------------------------------------------------------------------
-
-def search_jira() -> list[dict]:
-    """Return recently completed SUP project issues (internal process/tooling, not customer tickets)."""
-    log.info("Searching Jira SUP project (last %d hours)...", LOOKBACK_HOURS)
-    jql = (
-        'project = SUP '
-        'AND statusCategory = Done '
-        f'AND updated >= "{since_date()}" '
-        'AND labels != "customer-ticket" '
-        'AND labels != "wiz-cve" '
-        'ORDER BY updated DESC'
-    )
-    url = f"{JIRA_BASE_URL}/rest/api/3/search/jql"
-    params = {
-        "jql": jql,
-        "maxResults": 30,
-        "fields": "summary,description,status,labels,assignee,updated,comment",
-    }
-    resp = requests.get(
-        url,
-        params=params,
-        auth=(JIRA_EMAIL, JIRA_API_TOKEN),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    issues = resp.json().get("issues", [])
-    log.info("  Found %d Jira issues", len(issues))
-
-    results = []
-    for issue in issues:
-        f = issue["fields"]
-        desc = ""
-        if f.get("description"):
-            # Jira uses Atlassian Document Format (ADF) — extract text nodes
-            desc = _extract_adf_text(f["description"])[:1000]
-        results.append({
-            "source": "jira",
-            "key": issue["key"],
-            "title": f["summary"],
-            "url": f"{JIRA_BASE_URL}/browse/{issue['key']}",
-            "status": f["status"]["name"],
-            "labels": f.get("labels", []),
-            "updated": f["updated"],
-            "description": desc,
-        })
-    return results
-
-
-def _extract_adf_text(node: dict | list | str, depth: int = 0) -> str:
-    """Recursively pull plain text out of an Atlassian Document Format node."""
-    if depth > 20:
-        return ""
-    if isinstance(node, str):
-        return node
-    if isinstance(node, list):
-        return " ".join(_extract_adf_text(n, depth + 1) for n in node)
-    if isinstance(node, dict):
-        parts = []
-        if node.get("type") == "text" and "text" in node:
-            parts.append(node["text"])
-        for child in node.get("content", []):
-            parts.append(_extract_adf_text(child, depth + 1))
-        return " ".join(p for p in parts if p)
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +193,6 @@ def search_linear() -> list[dict]:
 def search_slack() -> list[dict]:
     """Search key Slack channels for process announcements."""
     log.info("Searching Slack channels (last %d hours)...", LOOKBACK_HOURS)
-    # Slack's search after: filter uses YYYY-MM-DD
     after = since_date()
 
     patterns = [
@@ -314,7 +236,6 @@ def search_slack() -> list[dict]:
                     "ts": ts,
                     "permalink": m.get("permalink", ""),
                 })
-            # Slack rate limit: ~1 req/sec for search
             time.sleep(1.1)
         except Exception as e:
             log.warning("  Slack search failed for '%s': %s", query, e)
@@ -329,7 +250,6 @@ def poll_private_slack_channels() -> list[dict]:
         return []
 
     log.info("Polling %d private Slack channel(s)...", len(SLACK_PRIVATE_CHANNELS))
-    # Convert lookback hours to a Unix timestamp for the oldest= param
     oldest_ts = str(
         (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)).timestamp()
     )
@@ -359,7 +279,7 @@ def poll_private_slack_channels() -> list[dict]:
             messages = data.get("messages", [])
             log.info("  Found %d messages in #%s", len(messages), channel["name"])
             for m in messages:
-                if m.get("subtype"):  # skip join/leave/bot messages
+                if m.get("subtype"):
                     continue
                 results.append({
                     "source": "slack_private",
@@ -380,7 +300,7 @@ def poll_private_slack_channels() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """You are the Support Engineering changelog bot for CircleCI.
-Your job is to review raw research data from Confluence, Jira, Linear, and Slack,
+Your job is to review raw research data from Confluence, Linear, and Slack,
 and produce new changelog entries for the Support Engineering Process Changelog.
 
 RULES:
@@ -400,7 +320,7 @@ Return a JSON array (no markdown fences, no preamble). Each object must have:
   "title": "Bold one-line title",
   "summary": "2-5 sentences. What changed, why it matters, any action required.",
   "source_url": "https://...",
-  "source_label": "Short link label e.g. Confluence, JIRA-123, Linear SUPENG-45, Slack thread",
+  "source_label": "Short link label e.g. Confluence, Linear SUPENG-45, Slack thread",
   "added_by": "Name or Team"
 }
 
@@ -418,9 +338,6 @@ Research window: last {LOOKBACK_HOURS} hours
 
 === CONFLUENCE PAGES ===
 {json.dumps(raw_data['confluence'], indent=2)}
-
-=== JIRA ISSUES ===
-{json.dumps(raw_data['jira'], indent=2)}
 
 === LINEAR ISSUES ===
 {json.dumps(raw_data['linear'], indent=2)}
@@ -442,7 +359,6 @@ Review all of the above and return a JSON array of changelog entries following t
     )
 
     text = response.content[0].text.strip()
-    # Strip any accidental markdown fences
     text = re.sub(r"^```[a-z]*\n?", "", text)
     text = re.sub(r"\n?```$", "", text)
     entries = json.loads(text)
@@ -493,8 +409,6 @@ def update_confluence_page(page: dict, new_rows_html: str, entry_count: int) -> 
     current_body = page["body"]["storage"]["value"]
     current_version = page["version"]["number"]
 
-    # Find the opening <tbody> tag inside the full-width table and insert after it.
-    # The table always has data-layout="full-width".
     tbody_pattern = re.compile(r"(<table[^>]*data-layout=\"full-width\"[^>]*>.*?<tbody>)", re.DOTALL)
     match = tbody_pattern.search(current_body)
     if not match:
@@ -550,14 +464,12 @@ def main():
 
     # 1. Research
     confluence_pages = search_confluence()
-    jira_issues = search_jira()
     linear_issues = search_linear()
     slack_messages = search_slack()
     slack_private = poll_private_slack_channels()
 
     raw_data = {
         "confluence": confluence_pages,
-        "jira": jira_issues,
         "linear": linear_issues,
         "slack": slack_messages,
         "slack_private": slack_private,
@@ -565,10 +477,9 @@ def main():
 
     total_signals = sum(len(v) for v in raw_data.values())
     log.info(
-        "Research complete: %d total signals (%d Confluence, %d Jira, %d Linear, %d Slack public, %d Slack private)",
+        "Research complete: %d total signals (%d Confluence, %d Linear, %d Slack public, %d Slack private)",
         total_signals,
         len(confluence_pages),
-        len(jira_issues),
         len(linear_issues),
         len(slack_messages),
         len(slack_private),
