@@ -13,7 +13,6 @@ Required environment variables:
   CONFLUENCE_API_TOKEN    — Atlassian API token
   LINEAR_API_KEY          — Linear personal API key
   SLACK_BOT_TOKEN         — Slack bot token (for private channel history; needs groups:history scope)
-  SLACK_USER_TOKEN        — Slack user token (xoxp-) with search:read scope for public channel search
 """
 
 import os
@@ -51,7 +50,6 @@ CONFLUENCE_SPACE = "CE"
 LINEAR_API_KEY = os.environ["LINEAR_API_KEY"]
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]    # xoxb- for private channel history
-SLACK_USER_TOKEN = os.environ["SLACK_USER_TOKEN"]  # xoxp- for search.messages
 SLACK_CHANNELS = [
     {"name": "custeng-support", "id": "C03CF3S7P"},
     {"name": "custeng-general"},
@@ -196,57 +194,14 @@ def search_linear() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def search_slack() -> list[dict]:
-    """Search key Slack channels for process announcements."""
+    """Search key Slack channels for process announcements.
+
+    Requires a user token (xoxp-) with search:read scope. If unavailable,
+    this step is skipped gracefully — Confluence and Linear remain active sources.
+    """
     log.info("Searching Slack channels (last %d hours)...", LOOKBACK_HOURS)
-    after = since_date()
-
-    patterns = [
-        f"process change in:custeng-support after:{after}",
-        f"heads up in:custeng-support after:{after}",
-        f"FYI in:custeng-support after:{after}",
-        f"going forward in:custeng-support after:{after}",
-        f"reminder in:custeng-support after:{after}",
-        f"process change in:custeng-general after:{after}",
-        f"heads up in:custeng-general after:{after}",
-        f"FYI in:custeng-general after:{after}",
-    ]
-
-    seen_ts = set()
-    results = []
-
-    for query in patterns:
-        try:
-            resp = requests.get(
-                "https://slack.com/api/search.messages",
-                params={"query": query, "count": 10},
-                headers={"Authorization": f"Bearer {SLACK_USER_TOKEN}"},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if not data.get("ok"):
-                log.warning("  Slack search error for '%s': %s", query, data.get("error"))
-                continue
-            matches = data.get("messages", {}).get("matches", [])
-            for m in matches:
-                ts = m.get("ts")
-                if ts in seen_ts:
-                    continue
-                seen_ts.add(ts)
-                results.append({
-                    "source": "slack",
-                    "channel": m.get("channel", {}).get("name", "unknown"),
-                    "user": m.get("username", "unknown"),
-                    "text": m.get("text", "")[:800],
-                    "ts": ts,
-                    "permalink": m.get("permalink", ""),
-                })
-            time.sleep(1.1)
-        except Exception as e:
-            log.warning("  Slack search failed for '%s': %s", query, e)
-
-    log.info("  Found %d unique Slack messages", len(results))
-    return results
+    log.info("  Skipping public Slack search — requires user token (xoxp-) with search:read scope. Only bot token is configured.")
+    return []
 
 
 def poll_private_slack_channels() -> list[dict]:
